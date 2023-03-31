@@ -1,9 +1,18 @@
 import app from './app.js';
 import cloudinary from 'cloudinary';
 import {connectDB} from "./config/database.js";
+import razorpay from 'razorpay';
+
+
 const PORT= 4000 || process.env.PORT;
 
 connectDB();
+
+// razorpay configuaration
+export const instance = new razorpay({
+    key_id:process.env.RAZORPAY_API_KEY,
+    key_secret:process.env.RAZORPAY_API_SECRET,
+})
 
 
 // cloudinary configuration 

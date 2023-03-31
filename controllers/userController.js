@@ -5,28 +5,30 @@ import { sendEmail } from "../utils/sendEmail.js";
 import { sendToken } from "../utils/SendToken.js";
 import crypto from "crypto";
 import { Course } from "../models/Course.js";
-
+import cloudinary from "cloudinary";
+import getDataUri from "../utils/dataUri.js";
 
 // Register a user => /api/v1/register
 export const register = catchAsyncError(async (req, res, next) => {
     const { name, email, password } = req.body;
+    const file = req.file;
 
-    // const file=req.file;
-    if(!name || !email || !password) return next(new ErrorHandler("Please enter all fields",400));
+    if(!name || !email || !password || !file) return next(new ErrorHandler("Please enter all fields",400));
 
     let user = await User.findOne({ email });
 
     if (user) return next(new ErrorHandler("User already exists",409));
 
-    //upload image to cloudinary
+    const fileUri = getDataUri(file);
+    const mycloud = await cloudinary.v2.uploader.upload(fileUri.content);
 
     user = await User.create({
         name,
         email,
         password,
         avatar: {
-            public_id: "avatars/0",
-            url: "https://res.cloudinary.com/dfqz3qz8l/image/upload/v1623593130/avatars/0.jpg",
+            public_id: mycloud.public_id,
+            url: mycloud.secure_url,
         },
     });
 
@@ -125,6 +127,18 @@ export const updateProfile = catchAsyncError(async (req, res, next) => {
 //Update profile picture => /api/v1/me/updatepicture
 
 export const updateProfilePicture = catchAsyncError(async (req, res, next) => {
+    const user = await User.findById(req.user._id);
+
+    const file = req.file;
+    const fileUri = getDataUri(file);
+    const mycloud = await cloudinary.v2.uploader.upload(fileUri.content);
+
+    await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+
+    user.avatar = {
+        public_id: mycloud.public_id,
+        url: mycloud.secure_url,
+    };
 
     res.status(200).json({
         success: true,
@@ -238,6 +252,92 @@ export const removeFromPlaylist = catchAsyncError(async (req, res, next) => {
         success: true,
         message: "Remove from playlist successfully",
     });
+
+
+});
+
+
+// ADMIN ROUTES
+// get all users => /api/v1/admin/users
+
+export const getAllUsers = catchAsyncError(async (req, res, next) => {
+    const users = await User.find();
+
+    res.status(200).json({
+        Total_Users: users.length,
+        success: true,
+        users,
+    });
+});
+
+
+// update user role => /api/v1/admin/user/:id
+
+export const updateUserRole = catchAsyncError(async (req, res, next) => {
+    // const { role } = req.body;
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) return next(new ErrorHandler("User not found", 404));
+
+    if(user.role==="user") user.role="admin";
+    else user.role="user";
+
+    await user.save();
+
+    res.status(200).json({
+        success: true,
+        message: "Role updated successfully",
+    });
+});
+
+
+// delete user => /api/v1/admin/user/:id
+
+export const deleteUser = catchAsyncError(async (req, res, next) => {
+
+    const user = await User.findById(req.params.id);
+
+    if (!user) return next(new ErrorHandler("User not found", 404));
+
+    await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+
+    // cancel subscription 
+
+    await user.remove();
+
+    res.status(200).json({
+        success: true,
+        message: "User deleted successfully",
+
+    });
+
+});
+
+
+// delete my profile => /api/v1/me
+
+export const deleteMyProfile = catchAsyncError(async (req, res, next) => {
+
+    const user = await User.findById(req.user._id);
+
+    await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+
+    // cancel subscription
+
+    await user.remove();
+
+    res.status(200)
+    .cookie("token", null, {
+        expires: new Date(Date.now()),
+    })
+    .json({
+        success: true,
+        message: "User deleted successfully",
+    });
+
+
+
 
 
 });
